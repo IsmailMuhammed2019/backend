@@ -7,14 +7,12 @@ Run:
     python view_results.py --limit 20
 """
 
-import sqlite3
 import argparse
-from scraper import DB_PATH
-
+from db import get_db_connection
 
 def view(severity: str = None, limit: int = 50):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
+
 
     query = "SELECT * FROM flagged_comments"
     params = []

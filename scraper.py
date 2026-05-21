@@ -24,6 +24,9 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
+from db import get_db_connection, AegisConnection, DB_PATH
+
+
 # Load optional environment variables from .env
 load_dotenv()
 
@@ -104,11 +107,12 @@ class Comment:
 # Database
 # ---------------------------------------------------------------------------
 
-def init_db(path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+def init_db(conn=None):
+    if conn is None:
+        conn = get_db_connection()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS seen_articles (
-            url_hash TEXT PRIMARY KEY,
+            url_hash VARCHAR(255) PRIMARY KEY,
             url TEXT,
             title TEXT,
             source TEXT,
@@ -173,14 +177,14 @@ def init_db(path: str = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
-def is_seen(conn: sqlite3.Connection, url_hash: str) -> bool:
+def is_seen(conn: AegisConnection, url_hash: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM seen_articles WHERE url_hash = ?", (url_hash,)
     ).fetchone()
     return row is not None
 
 
-def mark_seen(conn: sqlite3.Connection, article: Article):
+def mark_seen(conn: AegisConnection, article: Article):
     conn.execute(
         "INSERT OR IGNORE INTO seen_articles VALUES (?, ?, ?, ?, ?)",
         (article.url_hash, article.url, article.title,
@@ -189,7 +193,7 @@ def mark_seen(conn: sqlite3.Connection, article: Article):
     conn.commit()
 
 
-def save_flagged(conn: sqlite3.Connection, comment: Comment, matched: list[str], scan_id: Optional[int] = None):
+def save_flagged(conn: AegisConnection, comment: Comment, matched: list[str], scan_id: Optional[int] = None):
     conn.execute(
         """INSERT INTO flagged_comments
            (article_url, author, comment_text, timestamp, severity, matched_patterns, flagged_at, scan_id)
@@ -208,7 +212,7 @@ def save_flagged(conn: sqlite3.Connection, comment: Comment, matched: list[str],
     conn.commit()
 
 
-def save_scanned(conn: sqlite3.Connection, comment: Comment, article_title: str, severity: str, matched: list[str], scan_id: Optional[int] = None):
+def save_scanned(conn: AegisConnection, comment: Comment, article_title: str, severity: str, matched: list[str], scan_id: Optional[int] = None):
     """Persist every comment regardless of threat level for full audit trail."""
     conn.execute(
         """INSERT INTO scanned_comments
@@ -229,7 +233,7 @@ def save_scanned(conn: sqlite3.Connection, comment: Comment, article_title: str,
     conn.commit()
 
 
-def create_scan_session(conn: sqlite3.Connection, keyword: str, category: str) -> int:
+def create_scan_session(conn: AegisConnection, keyword: str, category: str) -> int:
     cursor = conn.cursor()
     cursor.execute(
         """INSERT INTO scan_sessions
@@ -242,7 +246,7 @@ def create_scan_session(conn: sqlite3.Connection, keyword: str, category: str) -
 
 
 def update_scan_session(
-    conn: sqlite3.Connection,
+    conn: AegisConnection,
     scan_id: int,
     status: str,
     completed_at: str = None,
@@ -262,6 +266,7 @@ def update_scan_session(
          threats_high, threats_medium, threats_low, error_message, scan_id)
     )
     conn.commit()
+
 
 
 # ---------------------------------------------------------------------------
@@ -711,7 +716,7 @@ def send_alert(comment: Comment, matched: list[str]):
 # ---------------------------------------------------------------------------
 
 def run_pipeline(
-    conn: sqlite3.Connection,
+    conn: AegisConnection,
     keywords: list[str] = None,
     feeds: list[str] = None,
     reddit_keyword: str = None,

@@ -1,12 +1,13 @@
-import sqlite3
 import urllib.parse
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 import logging
+from datetime import datetime
 
-from scraper import init_db, run_pipeline, DB_PATH, create_scan_session, update_scan_session
+from db import get_db_connection, DB_PATH
+from scraper import init_db, run_pipeline, create_scan_session, update_scan_session
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -40,11 +41,6 @@ class ScanRequest(BaseModel):
     keyword: str
     category: Optional[str] = "Brand Monitoring"
 
-# Helper to open connection to SQLite
-def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 # Database initializer
 @app.on_event("startup")
@@ -101,7 +97,7 @@ def perform_background_scan(keyword: str, scan_id: int):
 
         scan_status.is_scanning = False
         scan_status.progress_message = f"Scan complete. Found {scan_status.articles_found} articles, {scan_status.threats_found} threats."
-        scan_status.last_scan_completed = sqlite3.connect(DB_PATH).execute("SELECT datetime('now')").fetchone()[0]
+        scan_status.last_scan_completed = datetime.utcnow().isoformat()
         logger.info(f"Background scan completed for: {keyword}")
     except Exception as e:
         logger.error(f"Error during background scan: {e}")
