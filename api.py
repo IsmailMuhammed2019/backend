@@ -345,3 +345,59 @@ def clear_database():
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+
+@app.get("/api/sources")
+def get_sources():
+    """Get all unique source domains scraped, with live online/offline status."""
+    import concurrent.futures
+    from urllib.parse import urlparse
+
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT source, url FROM seen_articles"
+        ).fetchall()
+
+        domain_map: dict = {}
+        for row in rows:
+            raw_url = row["url"] or ""
+            raw_source = row["source"] or ""
+            try:
+                parsed = urlparse(raw_url)
+                domain = parsed.netloc.replace("www.", "") if parsed.netloc else raw_source
+            except Exception:
+                domain = raw_source
+
+            if domain and domain not in domain_map:
+                canonical = raw_url if raw_url.startswith("http") else f"https://{domain}"
+                domain_map[domain] = {
+                    "domain": domain,
+                    "url": canonical,
+                    "status": "unknown",
+                }
+
+        domains = list(domain_map.values())
+
+        def check_status(item: dict) -> dict:
+            try:
+                resp = httpx.head(item["url"], timeout=5.0, follow_redirects=True)
+                item["status"] = "online" if resp.status_code < 500 else "offline"
+            except Exception:
+                item["status"] = "offline"
+            return item
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(check_status, domains))
+
+        online_count = sum(1 for r in results if r["status"] == "online")
+        return {
+            "sources": sorted(results, key=lambda x: x["domain"].lower()),
+            "online": online_count,
+            "total": len(results),
+        }
+    except Exception as e:
+        logger.error(f"Sources query error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
