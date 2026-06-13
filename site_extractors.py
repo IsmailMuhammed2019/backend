@@ -5,7 +5,7 @@ Drop these into scraper.py by adding a dispatch map in extract_comments_generic(
 Each extractor is tailored to a site's actual HTML structure.
 
 Usage in scraper.py:
-    from site_extractors import get_extractor
+    from site_extractors import get_extractor another one
     extractor = get_extractor(article.url)
     comments = extractor(html, article.url)
 """
